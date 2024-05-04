@@ -1,0 +1,731 @@
+{
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "colab": {
+      "provenance": [],
+      "include_colab_link": true
+    },
+    "kernelspec": {
+      "name": "python3",
+      "display_name": "Python 3"
+    },
+    "language_info": {
+      "name": "python"
+    }
+  },
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "view-in-github",
+        "colab_type": "text"
+      },
+      "source": [
+        "<a href=\"https://colab.research.google.com/github/miguel-peralta/cars_ista322/blob/main/Added%20database%20connection%20stuff%2C%20need%20to%20fix%20styles\" target=\"_parent\"><img src=\"https://colab.research.google.com/assets/colab-badge.svg\" alt=\"Open In Colab\"/></a>"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "# Cars Relational Databases\n",
+        "ISTA 322 Final Project, Spring 2024 <br>\n",
+        "Miguel Candido Aurora Peralta <br>\n",
+        "## Extract and Transform\n",
+        "### KBB Web Scraping\n",
+        "The cars are separated into new and used cars categories. The lists new and used cars are on separate pages. These lists will be combined into one for this project.\n",
+        "#### Used Cars\n",
+        "\n"
+      ],
+      "metadata": {
+        "id": "Zp2AZ6BeHomL"
+      }
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 5,
+      "metadata": {
+        "id": "NQ4shfygHkQN"
+      },
+      "outputs": [],
+      "source": [
+        "# Imports\n",
+        "import requests\n",
+        "from bs4 import BeautifulSoup\n",
+        "import pandas as pd"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "First we need to get a list of all of the URLs for the car models on KBB so that more information can be extracted from those pages."
+      ],
+      "metadata": {
+        "id": "Q-_c9r4a-TWL"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "def get_soup(url):\n",
+        "  '''Returns the HTML document as a JSON response for the given URL'''\n",
+        "  # requests HTML document for URL\n",
+        "  response = requests.get(url).text\n",
+        "  # returns JSON response\n",
+        "  return BeautifulSoup(response, 'html.parser')"
+      ],
+      "metadata": {
+        "id": "S1GQjmjbJ1MV"
+      },
+      "execution_count": 6,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# Create dataframe and lists to store info\n",
+        "models_list = pd.DataFrame()\n",
+        "urls = []\n",
+        "make = []\n",
+        "model = []\n",
+        "year = []\n",
+        "base_url = 'https://www.kbb.com'\n",
+        "\n",
+        "for page in ['new', 'used']:\n",
+        "  url = f'https://www.kbb.com/car-make-model-list/{page}/view-all/model'\n",
+        "  # Create HTML object from url\n",
+        "  soup = get_soup(url)\n",
+        "  # Create list to store relative URLS from the page\n",
+        "  links = []\n",
+        "  # Get all links from the page (the links to models all have the same style)\n",
+        "  for link in soup.find_all('a', attrs={'style':\"padding:12px 8px;display:inline-block\"}):\n",
+        "    # Add links to the list\n",
+        "    links.append(link.get('href'))\n",
+        "  # Split links using / as delimeter and add information to lists\n",
+        "  for car in links:\n",
+        "    urls.append(base_url+car)\n",
+        "    link_split = car.split('/')\n",
+        "    make.append(link_split[1])\n",
+        "    model.append(link_split[2])\n",
+        "    year.append(link_split[3])\n",
+        "\n",
+        "# Use lists to populate dataframe\n",
+        "models_list['url'] = urls\n",
+        "models_list['make'] = make\n",
+        "models_list['model'] = model\n",
+        "models_list['year'] = year"
+      ],
+      "metadata": {
+        "id": "DvO3B-L45_FQ"
+      },
+      "execution_count": 7,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "The all_models dataframe contains the basic info that can be extracted from the urls."
+      ],
+      "metadata": {
+        "id": "T8i7MTnxIEXN"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "all_models = get_models_list()"
+      ],
+      "metadata": {
+        "id": "RKJnlFAV7sGA"
+      },
+      "execution_count": 8,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "The styles for each car can be extracted from each model's page."
+      ],
+      "metadata": {
+        "id": "rFY9uaUmII0-"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "def get_styles(url):\n",
+        "    ''' Retrieves the style names from the model's KBB page'''\n",
+        "\n",
+        "    # Create HTML object from url\n",
+        "    html = get_html_doc(url)\n",
+        "    soup = BeautifulSoup(html, 'html.parser')\n",
+        "\n",
+        "    # Initialize dataframe\n",
+        "    styles = pd.DataFrame(columns=['style_name', 'combined_fuel_econ', 'seating', 'horsepower', 'cylinders', 'engine_type', 'engine_size_l'])\n",
+        "\n",
+        "    # Get style names\n",
+        "    names = soup.find_all('div', attrs={'class' : 'card-heading css-icyrr3'})\n",
+        "    styles['style_name'] = names.get_text()[1:]\n",
+        "\n",
+        "    # Extract other style info\n",
+        "    style_info = soup.find_all('div', attrs={'class' : 'css-1g54zqi e151py7u0'})\n",
+        "    style_info_text = [x.get_text() for x in style_info]\n",
+        "    style_info_text = style_info_text[4:]\n",
+        "\n",
+        "    mpg_values = style_info_text[::4]\n",
+        "    mpg_values = [x.split()[0] for x in mpg_values]\n",
+        "    styles['combined_fuel_econ'] = mpg_values\n",
+        "\n",
+        "    styles['seating'] = style_info_text[1::4]\n",
+        "\n",
+        "    styles['horsepower'] = style_info_text[2::4]\n",
+        "\n",
+        "    engine = style_info_text[3::4].split(', ')\n"
+      ],
+      "metadata": {
+        "id": "lzvIXiUV-muw"
+      },
+      "execution_count": 142,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "## Creating make and model tables"
+      ],
+      "metadata": {
+        "id": "_k10L_rVSLPY"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "def create_make_table(kbb):\n",
+        "  ''' Creates table with make and make_id '''\n",
+        "  # Initialize dataframe\n",
+        "  make = pd.DataFrame(columns = ['make'])\n",
+        "\n",
+        "  # Create list of sorted unique makes from kbb dataframe to populate make dataframe\n",
+        "  make_list = sorted(kbb['make'].unique())\n",
+        "  make['make'] = make_list\n",
+        "\n",
+        "  # Create make_id primary key column from index values\n",
+        "  make = make.reset_index()\n",
+        "  make = make.rename(columns={'index':'make_id'})\n",
+        "\n",
+        "  return make"
+      ],
+      "metadata": {
+        "id": "CDt5jqsISF13"
+      },
+      "execution_count": 143,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# Create make table\n",
+        "make = create_make_table(kbb)\n",
+        "print(make.head())"
+      ],
+      "metadata": {
+        "id": "FVvosBA9TaRP",
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "outputId": "6cbd513e-f32f-4da1-bd02-06b523102a67"
+      },
+      "execution_count": 144,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "   make_id          make\n",
+            "0        0         acura\n",
+            "1        1    alfa-romeo\n",
+            "2        2  aston-martin\n",
+            "3        3          audi\n",
+            "4        4       bentley\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "def create_model_table(kbb, make):\n",
+        "  ''' Create models table '''\n",
+        "  # Initialize DataFrame\n",
+        "  model = pd.DataFrame(columns=['url', 'make', 'model_name', 'year', 'styles'])\n",
+        "\n",
+        "  # Populate values from KBB dataframe\n",
+        "  model['url'] = kbb['url']\n",
+        "  model['make'] = kbb['make']\n",
+        "  model['model_name'] = kbb['model']\n",
+        "  model['year'] = kbb['year']\n",
+        "\n",
+        "  # Get styles from model pages using the function created above\n",
+        "  model['styles'] = model['url'].apply(get_styles)\n",
+        "\n",
+        "  # Merges to get make ids\n",
+        "  model = pd.merge(model, make, on='make', how='left')\n",
+        "\n",
+        "  # Creates column model_id from index values\n",
+        "  model = model.reset_index()\n",
+        "  model = model.rename(columns={'index':'model_id'})\n",
+        "\n",
+        "  return model"
+      ],
+      "metadata": {
+        "id": "K93PFJInS7xm"
+      },
+      "execution_count": 145,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# Create model table\n",
+        "model = create_model_table(kbb, make)\n",
+        "# Remove redundant columns\n",
+        "model = model.drop(columns = ['make', 'url'])\n",
+        "# Set datatype\n",
+        "model['year'] = model['year'].astype(int)\n",
+        "\n",
+        "print(model.head())"
+      ],
+      "metadata": {
+        "id": "npPZfhCtIou6"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "#### Fix datatypes"
+      ],
+      "metadata": {
+        "id": "chyTRTjcOUbE"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "### Used Cars Dataset\n",
+        "**NOTE: I had to reduce the file size from the original dataset or else I couldn't open the file in Google Sheets to be able to use it here. I took the first 10,000 rows of the original file.** <br>\n",
+        "Data Source: https://www.kaggle.com/datasets/austinreese/craigslist-carstrucks-data"
+      ],
+      "metadata": {
+        "id": "IFIEUl2lJXZM"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "used_cars = pd.read_csv('https://docs.google.com/spreadsheets/d/e/2PACX-1vQE7N5jz1Th8T-RBH-XxqGieLTr6R2gHpWQgGhBI9ZNeFxpMDrM_xZf3SHVC-7QJcoe_xB4rLRqpOV4/pub?output=csv')"
+      ],
+      "metadata": {
+        "id": "B3dfu8uNExUn"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "used_cars.head()"
+      ],
+      "metadata": {
+        "id": "mDHoXvKvKFjM"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "used_cars = used_cars.dropna(subset=['year', 'manufacturer', 'model'])"
+      ],
+      "metadata": {
+        "id": "7JcSeZo_Lpih"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "print(used_cars.describe())\n",
+        "print(used_cars.info())"
+      ],
+      "metadata": {
+        "id": "ce3MHzA6MQ_3"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# Add make_id\n",
+        "used_cars = pd.merge(used_cars, make, left_on='manufacturer', right_on='make', how='left')"
+      ],
+      "metadata": {
+        "id": "_9DC4i1ZMl5G"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "print(make['make'])"
+      ],
+      "metadata": {
+        "id": "pkT0yWaRU9hi"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# See how many cars that it was unable to identify the make for\n",
+        "rows_with_nan = used_cars[used_cars['make_id'].isna()]\n",
+        "rows_with_nan"
+      ],
+      "metadata": {
+        "id": "aQIowGk_Qga-"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# Drop rows with unidentified make\n",
+        "used_cars.dropna(subset=['make_id'])"
+      ],
+      "metadata": {
+        "id": "ksZxYd4LQuwT"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "## Load to AWS RDB\n",
+        "### Helper functions from notebooks"
+      ],
+      "metadata": {
+        "id": "Flr-MGIiRtu8"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "def get_database_list():\n",
+        "    conn = psycopg2.connect(\n",
+        "        host=\"finalproject.c5iy0yw40ip7.us-east-2.rds.amazonaws.com\",\n",
+        "        user=\"postgres\",\n",
+        "        password=\"password\"\n",
+        "    )\n",
+        "    cur = conn.cursor()\n",
+        "\n",
+        "    # Execute the query to get the list of databases\n",
+        "    cur.execute(\"SELECT datname FROM pg_database;\")\n",
+        "\n",
+        "    # Fetch all rows\n",
+        "    rows = cur.fetchall()\n",
+        "\n",
+        "    # Extract database names from rows\n",
+        "    database_list = [row[0] for row in rows]\n",
+        "\n",
+        "    # Close cursor and connection\n",
+        "    cur.close()\n",
+        "    conn.close()\n",
+        "\n",
+        "    return database_list\n",
+        "\n",
+        "print(get_database_list())"
+      ],
+      "metadata": {
+        "id": "zqgPBv4fUHj6",
+        "outputId": "48164e08-d67f-4f5d-ab41-b80a0440ab2f",
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        }
+      },
+      "execution_count": 118,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "['template0', 'template1', 'postgres', 'final_project', 'rdsadmin']\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "import psycopg2\n",
+        "def get_conn_cur():\n",
+        " # UPDATE WITH YOUR INFO!\n",
+        "\n",
+        " conn = psycopg2.connect(\n",
+        "    host=\"finalproject.c5iy0yw40ip7.us-east-2.rds.amazonaws.com\",\n",
+        "    database=\"final_project\",\n",
+        "    user=\"postgres\",\n",
+        "    password=\"password\",\n",
+        "    port='5432'\n",
+        "    )\n",
+        "\n",
+        " cur = conn.cursor()\n",
+        " return(conn, cur)\n",
+        "\n",
+        " get_conn_cur()\n",
+        "\n",
+        " # run_query function\n",
+        "def run_query(query_string):\n",
+        "\n",
+        " conn, cur = get_conn_cur() # get connection and cursor\n",
+        "\n",
+        " cur.execute(query_string) # executing string as before\n",
+        "\n",
+        " my_data = cur.fetchall() # fetch query data as before\n",
+        "\n",
+        " # here we're extracting the 0th element for each item in cur.description\n",
+        " colnames = [desc[0] for desc in cur.description]\n",
+        "\n",
+        " cur.close() # close\n",
+        " conn.close() # close\n",
+        "\n",
+        " return(colnames, my_data) # return column names AND data\n",
+        "\n",
+        "# Column name function for checking out what's in a table\n",
+        "def get_column_names(table_name): # arguement of table_name\n",
+        " conn, cur = get_conn_cur() # get connection and cursor\n",
+        "\n",
+        " # Now select column names while inserting the table name into the WERE\n",
+        " column_name_query = \"\"\"SELECT column_name FROM information_schema.columns\n",
+        "    WHERE table_name = '%s' \"\"\" %table_name\n",
+        "\n",
+        " cur.execute(column_name_query) # exectue\n",
+        " my_data = cur.fetchall() # store\n",
+        "\n",
+        " cur.close() # close\n",
+        " conn.close() # close\n",
+        "\n",
+        " return(my_data) # return\n",
+        "\n",
+        "# Check table_names\n",
+        "def get_table_names():\n",
+        "  conn, cur = get_conn_cur() # get connection and cursor\n",
+        "\n",
+        "  # query to get table names\n",
+        "  table_name_query = \"\"\"SELECT table_name FROM information_schema.tables\n",
+        "       WHERE table_schema = 'public' \"\"\"\n",
+        "\n",
+        "  cur.execute(table_name_query) # execute\n",
+        "  my_data = cur.fetchall() # fetch results\n",
+        "\n",
+        "  cur.close() #close cursor\n",
+        "  conn.close() # close connection\n",
+        "\n",
+        "  return(my_data) # return your fetched results\n",
+        "\n",
+        "def sql_head(table_name):\n",
+        " conn, cur = get_conn_cur() # get connection and cursor\n",
+        "\n",
+        " # Now select column names while inserting the table name into the WERE\n",
+        " head_query = \"\"\"SELECT * FROM %s LIMIT 5; \"\"\" %table_name\n",
+        "\n",
+        " cur.execute(head_query) # exectue\n",
+        " colnames = [desc[0] for desc in cur.description] # get column names\n",
+        " my_data = cur.fetchall() # store first five rows\n",
+        "\n",
+        " cur.close() # close\n",
+        " conn.close() # close\n",
+        "\n",
+        " df = pd.DataFrame(data = my_data, columns = colnames) # make into df\n",
+        "\n",
+        " return(df) # return\n",
+        "\n",
+        "# drop a table from your rdb (if you try to create a table that already exists, it'll throw an error)\n",
+        "def my_drop_table(tab_name):\n",
+        "  conn, cur = get_conn_cur()\n",
+        "  tq = \"\"\"DROP TABLE IF EXISTS %s CASCADE;\"\"\" %tab_name\n",
+        "  cur.execute(tq)\n",
+        "  conn.commit()"
+      ],
+      "metadata": {
+        "id": "AJ6reCJmRtO_"
+      },
+      "execution_count": 119,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "### Create make table"
+      ],
+      "metadata": {
+        "id": "CfNjbunXS6d-"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "tq = \"\"\"CREATE TABLE make (\n",
+        "    make_id SERIAL PRIMARY KEY,\n",
+        "    make VARCHAR\n",
+        "    );\"\"\"\n",
+        "\n",
+        "conn, cur = get_conn_cur()\n",
+        "cur.execute(tq)\n",
+        "conn.commit()"
+      ],
+      "metadata": {
+        "id": "Sy6bd1A8Spfv"
+      },
+      "execution_count": 124,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# Verify if it's there\n",
+        "get_table_names()"
+      ],
+      "metadata": {
+        "id": "8771-hNOUflv",
+        "outputId": "e00cd07c-8993-4427-c650-75d3f9631952",
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        }
+      },
+      "execution_count": 125,
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": [
+              "[('make',)]"
+            ]
+          },
+          "metadata": {},
+          "execution_count": 125
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "### Create model table"
+      ],
+      "metadata": {
+        "id": "w12bITymUsDD"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "tq = \"\"\"CREATE TABLE model (\n",
+        "    model_id SERIAL PRIMARY KEY,\n",
+        "    model_name VARCHAR,\n",
+        "    year INT,\n",
+        "    styles VARCHAR[], -- Assuming styles are stored as an array of VARCHAR\n",
+        "    make_id INT\n",
+        "    );\"\"\"\n",
+        "\n",
+        "conn, cur = get_conn_cur()\n",
+        "cur.execute(tq)\n",
+        "conn.commit()"
+      ],
+      "metadata": {
+        "id": "KT1AVITHUuWa"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# Verify if it's there\n",
+        "get_table_names()"
+      ],
+      "metadata": {
+        "id": "oUKfuxfqWkSg"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "### Create listings table"
+      ],
+      "metadata": {
+        "id": "hcp9utF_Wn64"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "tq = \"\"\"CREATE TABLE listing (\n",
+        "    listing_id BIGINT PRIMARY KEY,\n",
+        "    url VARCHAR,\n",
+        "    region VARCHAR,\n",
+        "    price SMALLINT,\n",
+        "    year SMALLINT,\n",
+        "    make VARCHAR,\n",
+        "    model VARCHAR,\n",
+        "    condition VARCHAR,\n",
+        "    cylinders VARCHAR,\n",
+        "    fuel VARCHAR,\n",
+        "    odometer VARCHAR,\n",
+        "    title_status VARCHAR,\n",
+        "    transmission VARCHAR,\n",
+        "    vin VARCHAR,\n",
+        "    drive VARCHAR,\n",
+        "    size VARCHAR,\n",
+        "    type VARCHAR,\n",
+        "    paint_color VARCHAR,\n",
+        "    image_url VARCHAR,\n",
+        "    description TEXT,\n",
+        "    state VARCHAR,\n",
+        "    lat FLOAT,\n",
+        "    long FLOAT,\n",
+        "    posting_date TIMESTAMP,\n",
+        "    make_id SMALLINT\n",
+        ");\"\"\"\n",
+        "\n",
+        "conn, cur = get_conn_cur()\n",
+        "cur.execute(tq)\n",
+        "conn.commit()"
+      ],
+      "metadata": {
+        "id": "YnVaHoSaWl5K"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# Verify if it's there\n",
+        "get_table_names()"
+      ],
+      "metadata": {
+        "id": "1xs7LjgjXZ3E"
+      },
+      "execution_count": null,
+      "outputs": []
+    }
+  ]
+}
